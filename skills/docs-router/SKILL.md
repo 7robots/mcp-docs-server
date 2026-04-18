@@ -11,41 +11,41 @@ description: "How to look up programming documentation through mcp-docs-server, 
 servers behind a single endpoint. Instead of wiring every docs MCP into every
 client, you add this one server and get them all.
 
-Tools from each backend are automatically namespaced by the backend id.
-Today's backends:
-
-| Backend id | Covers |
-|---|---|
-| `fastmcp` | FastMCP framework (Python, MCP protocol) |
-| `google` | Google developer docs (GCP, Android, Firebase, …) |
-| `cloudflare` | Cloudflare (Workers, D1, R2, Pages, …) |
-| `aws` | AWS services |
-| `mslearn` | Microsoft Learn (Azure, .NET, TypeScript, …) |
-
-A tool named `search_documentation` on the Cloudflare backend becomes
-`cloudflare_search_documentation` here.
+Tools from each backend are automatically namespaced by the backend id — a
+tool named `search_documentation` on the Cloudflare backend becomes
+`cloudflare_search_documentation` here. To see the current set of backends
+(including any that have been skipped at startup), call `list_sources()`.
 
 ## How to use it
 
 This server exposes **Code Mode** discovery tools, not raw backend tools. That
 keeps the tool catalog in your context small even as more backends get added.
 
-The three meta-tools are:
+The four meta-tools are:
 
-1. **`search(query, tags=None)`** — keyword-search the combined catalog. Returns
-   tool names + brief descriptions. Start here.
-2. **`get_schema(tools=[...])`** — fetch JSON schemas for the tools you picked.
+1. **`list_sources()`** — returns the live list of documentation backends with
+   their tags and loaded status. Call this first when you're unsure which
+   backends are available, or to debug "search returned nothing". Cheap.
+2. **`search(query, tags=None)`** — keyword-search the combined backend tool
+   catalog. Returns tool names + brief descriptions. Use `tags=[...]` with
+   values from `list_sources()` to scope the search to specific backends.
+3. **`get_schema(tools=[...])`** — fetch JSON schemas for the tools you picked.
    Call this once, for only the tools you will actually use.
-3. **`execute(code)`** — run a short async Python block where `call_tool(name, params)`
+4. **`execute(code)`** — run a short async Python block where `call_tool(name, params)`
    is in scope. This is where real work happens.
 
 ### The golden path
 
 ```text
-1. search("<topic>")                     → pick 1–3 tool names
+0. list_sources()                        → only if you need to confirm which
+                                            backends are wired up (optional on
+                                            a familiar server)
+1. search("<topic>", tags=[...])         → pick 1–3 tool names; use tags from
+                                            list_sources() to scope when the
+                                            topic is clearly one backend's
 2. get_schema(tools=[...chosen...])      → read required params
-3. execute(code="...")                   → do the multi-step lookup in one block,
-                                            return just the final answer
+3. execute(code="...")                   → do the multi-step lookup in one
+                                            block, return just the final answer
 ```
 
 ### Example: "Explain Cloudflare Durable Objects alarms"

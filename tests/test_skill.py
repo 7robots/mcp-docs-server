@@ -51,13 +51,21 @@ class TestSkillContent:
         # Strip frontmatter
         return text.split("---\n", 2)[-1]
 
-    def test_lists_current_backends(self, body):
-        for bid in ("fastmcp", "google", "cloudflare", "aws", "mslearn"):
-            assert bid in body, f"SKILL.md should mention backend id {bid!r}"
-
     def test_documents_code_mode_meta_tools(self, body):
-        for tool in ("search", "get_schema", "execute", "call_tool"):
+        # list_sources is the canonical "what backends exist" entry point
+        # now that the static backend table has been removed from the skill.
+        for tool in ("list_sources", "search", "get_schema", "execute", "call_tool"):
             assert tool in body, f"SKILL.md should reference meta-tool {tool!r}"
+
+    def test_points_at_list_sources_not_static_table(self, body):
+        """The skill should defer the backend catalog to `list_sources()`.
+
+        A static markdown table of backend ids drifts out of sync with the
+        live config, so it's been removed intentionally.
+        """
+        assert "list_sources" in body
+        # Loose check: the body shouldn't contain the old two-column table.
+        assert "| Backend id |" not in body
 
     def test_includes_example_code(self, body):
         assert "```python" in body, "SKILL.md should include a Python example block"

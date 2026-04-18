@@ -143,3 +143,55 @@ def build_proxy_config(path: Path) -> LoadResult:
         logger.info("Skipped backend %r: %s", bid, reason)
 
     return {"mcpServers": mcp_servers}
+
+
+def summarize_backends(path: Path) -> list[dict[str, Any]]:
+    """Return a public-facing summary of backends for the `list_sources` tool.
+
+    Mirrors `build_proxy_config`'s load/skip decisions but returns only the
+    metadata safe to expose to an LLM (id, name, tags, loaded, skip_reason).
+    URLs and auth details are intentionally omitted.
+
+    Unlike `build_proxy_config`, this function does not log — it is called at
+    tool-invocation time, not at server startup.
+    """
+    backends = load_backends_file(path)
+    summaries: list[dict[str, Any]] = []
+
+    for backend in backends:
+        bid = backend["id"]
+        summary: dict[str, Any] = {
+            "id": bid,
+            "name": backend.get("name", bid),
+            "tags": list(backend.get("tags") or []),
+            "loaded": False,
+            "skip_reason": None,
+        }
+
+        if not backend.get("enabled", True):
+            summary["skip_reason"] = "disabled"
+            summaries.append(summary)
+            continue
+
+        if not _resolve_env(backend["url"]):
+            summary["skip_reason"] = f"url unresolved: {backend['url']!r}"
+            summaries.append(summary)
+            continue
+
+        try:
+            headers = _build_headers(backend)
+        except BackendConfigError as e:
+            summary["skip_reason"] = f"invalid auth config: {e}"
+            summaries.append(summary)
+            continue
+
+        if headers is None:
+            auth = backend.get("auth") or {}
+            summary["skip_reason"] = f"missing credential ({auth.get('token_env', '?')})"
+            summaries.append(summary)
+            continue
+
+        summary["loaded"] = True
+        summaries.append(summary)
+
+    return summaries

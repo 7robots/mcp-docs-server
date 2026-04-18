@@ -15,11 +15,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastmcp.experimental.transforms.code_mode import CodeMode  # noqa: E402
+from fastmcp.experimental.transforms.code_mode import (  # noqa: E402
+    CodeMode,
+    GetSchemas,
+    Search,
+)
 from fastmcp.server import create_proxy  # noqa: E402
 from fastmcp.server.providers.skills import SkillProvider  # noqa: E402
 
 from mcp_docs.backends import build_proxy_config  # noqa: E402
+from mcp_docs.discovery import ListSources  # noqa: E402
 
 HERE = Path(__file__).parent
 
@@ -74,14 +79,14 @@ def _create_auth():
 
 
 INSTRUCTIONS = (
-    "Unified front-end for documentation MCP servers. "
-    "Backends (FastMCP, Google Developer, Cloudflare, AWS, Microsoft Learn) "
-    "are proxied and prefixed by id (e.g. cloudflare_*). Use the Code Mode "
-    "discovery tools: search() to find docs tools by keyword, get_schema() "
-    "for signatures, then execute a short Python block that calls "
-    "`call_tool(name, params)` — chain resolve/fetch calls in one block and "
-    "return only the answer. See the skill://docs-router/SKILL.md resource "
-    "for examples."
+    "Unified front-end for documentation MCP servers. Backends are proxied "
+    "and prefixed by id (e.g. cloudflare_*). Use the Code Mode discovery "
+    "tools: list_sources() to see which doc backends are wired up, "
+    "search() to find docs tools by keyword (with optional tags=[...] to "
+    "scope to specific backends), get_schema() for signatures, then execute "
+    "a short Python block that calls `call_tool(name, params)` — chain "
+    "resolve/fetch calls in one block and return only the answer. See the "
+    "skill://docs-router/SKILL.md resource for examples."
 )
 
 
@@ -89,12 +94,18 @@ INSTRUCTIONS = (
 # fastmcp.cloud; create_proxy() returns a FastMCPProxy (a FastMCP subclass)
 # with a ProxyProvider already wired in, and our kwargs (auth, transforms,
 # instructions) are forwarded to the FastMCP constructor.
+BACKENDS_PATH = HERE / "backends.yaml"
+
 mcp = create_proxy(
-    build_proxy_config(HERE / "backends.yaml"),
+    build_proxy_config(BACKENDS_PATH),
     name="mcp-docs-server",
     instructions=INSTRUCTIONS,
     auth=_create_auth(),
-    transforms=[CodeMode()],
+    transforms=[CodeMode(discovery_tools=[
+        Search(),
+        GetSchemas(),
+        ListSources(BACKENDS_PATH),
+    ])],
 )
 
 # Bundle the usage skill. SkillProvider exposes SKILL.md at

@@ -52,6 +52,7 @@ class TestServerImports:
         # Instructions should teach the client about the Code Mode meta-tools
         # so an LLM picking the server up cold knows what to do.
         text = server.mcp.instructions.lower()
+        assert "list_sources" in text
         assert "search" in text
         assert "get_schema" in text
         assert "call_tool" in text
@@ -74,6 +75,37 @@ class TestCodeMode:
         server = _fresh_server(monkeypatch)
         names = [type(t).__name__ for t in server.mcp.transforms]
         assert len(names) == len(set(names)), f"duplicate transforms: {names}"
+
+    def test_list_sources_discovery_tool_registered(self, clean_okta_env, clean_backend_env, monkeypatch):
+        """CodeMode should include ListSources alongside Search and GetSchemas.
+
+        A plain `@mcp.tool list_sources` wouldn't work — CodeMode collapses
+        non-discovery tools behind `search`. It must be a discovery-tool factory.
+        """
+        from fastmcp.experimental.transforms.code_mode import CodeMode
+
+        from mcp_docs.discovery import ListSources
+
+        server = _fresh_server(monkeypatch)
+        code_mode = next(t for t in server.mcp.transforms if isinstance(t, CodeMode))
+        assert any(
+            isinstance(f, ListSources) for f in code_mode._discovery_factories
+        ), "expected ListSources factory in CodeMode discovery_tools"
+
+    def test_discovery_tools_include_search_and_get_schemas(
+        self, clean_okta_env, clean_backend_env, monkeypatch
+    ):
+        """Custom `discovery_tools=[...]` replaces the default pair — verify we didn't drop one."""
+        from fastmcp.experimental.transforms.code_mode import (
+            CodeMode,
+            GetSchemas,
+            Search,
+        )
+
+        server = _fresh_server(monkeypatch)
+        code_mode = next(t for t in server.mcp.transforms if isinstance(t, CodeMode))
+        factory_types = {type(f).__name__ for f in code_mode._discovery_factories}
+        assert {"Search", "GetSchemas", "ListSources"} <= factory_types
 
 
 # ---------------------------------------------------------------------------
