@@ -1,0 +1,54 @@
+# mcp-docs-server backend registry
+#
+# Each enabled backend is added to an MCPConfig that create_proxy() turns into
+# a FastMCPProxy. Tool names are prefixed with `{id}_` automatically.
+#
+# auth.type options:
+#   - none                   (no Authorization header)
+#   - bearer                 (Authorization: Bearer ${token_env})
+#
+# If auth.type is "bearer" and token_env resolves to an empty value,
+# the backend is skipped at load time with a warning — the server still starts.
+
+backends:
+  - id: fastmcp
+    name: FastMCP Docs
+    url: https://gofastmcp.com/mcp
+    transport: http
+    auth: { type: none }
+    tags: [fastmcp, python, mcp]
+    enabled: true
+
+  - id: google
+    name: Google Developer
+    url: https://developerknowledge.googleapis.com/mcp
+    transport: http
+    auth: { type: none }
+    tags: [google, gcp, android, firebase]
+    enabled: true
+
+  - id: cloudflare
+    name: Cloudflare Docs
+    url: https://docs.mcp.cloudflare.com/mcp
+    transport: http
+    auth: { type: none }
+    tags: [cloudflare, workers, web]
+    enabled: true
+
+  - id: aws
+    name: AWS Knowledge
+    url: https://knowledge-mcp.global.api.aws
+    transport: http
+    # AWS knowledge MCP may require auth; if 401s show up, switch to:
+    #   auth: { type: bearer, token_env: AWS_KNOWLEDGE_BEARER_TOKEN }
+    auth: { type: none }
+    tags: [aws, cloud]
+    enabled: true
+
+  - id: mslearn
+    name: Microsoft Learn
+    url: https://learn.microsoft.com/api/mcp
+    transport: http
+    auth: { type: none }
+    tags: [microsoft, azure, dotnet, typescript]
+    enabled: true

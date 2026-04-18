@@ -1,0 +1,25 @@
+[project]
+name = "mcp-docs-server"
+version = "0.1.0"
+description = "Unified front-end MCP server that proxies multiple documentation MCP servers and exposes them via Code Mode."
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp[code-mode]>=3.1.0,<4",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+mcp-docs-server = "server:mcp.run"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
