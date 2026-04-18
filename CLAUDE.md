@@ -183,8 +183,11 @@ pattern.
   FastMCP 3.1.x deployment (fastmcp.json shape, `__main__` block,
   `SkillProvider` usage).
 - [`$HOME/GitHub/mcp-marketplace`](../mcp-marketplace/) — test-suite
-  convention. Also the planned v2 source for dynamic backend discovery
-  (REST API, not direct Mongo access — see README §v2).
+  convention. Also the live source for dynamic backend discovery: set
+  `MCP_MARKETPLACE_URL` to its `/api/discovery/servers` endpoint and
+  docs-tagged servers auto-merge with `backends.yaml` at startup
+  (`mcp_docs/backends.py::fetch_marketplace_backends`). See README
+  "Auto-discovery from mcp-marketplace" for the full contract.
 - fastmcp.cloud dashboard — deploy logs, env vars, server URL
   (`concrete-silver-mongoose.fastmcp.app`).
 

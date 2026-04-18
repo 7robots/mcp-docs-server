@@ -87,9 +87,24 @@ Add `MYBACKEND_BEARER_TOKEN` to `fastmcp.json` and to the fastmcp.cloud
 dashboard. Tools from the backend automatically appear prefixed as
 `mybackend_*`.
 
+## Auto-discovery from mcp-marketplace
+
+Set `MCP_MARKETPLACE_URL` to an `mcp-marketplace` discovery endpoint
+(e.g. `https://<host>/api/discovery/servers`) to automatically pull
+shared MCP servers tagged `docs` at startup and merge them with
+`backends.yaml`. File entries win on `id` conflict; marketplace
+results are cached for the process lifetime (restart to re-fetch).
+
+For a marketplace-discovered server with bearer auth, set
+`<ID>_BEARER_TOKEN` (id uppercased, dashes → underscores) in the
+environment and in `fastmcp.json`. OAuth-protected marketplace servers
+are skipped — mcp-docs-server has no path to acquire those tokens at
+runtime.
+
+Leave `MCP_MARKETPLACE_URL` unset to disable marketplace discovery
+entirely.
+
 ## v2 ideas (not implemented)
 
-- Discover backends from `mcp-marketplace` via a public REST endpoint
-  (filter by `tag=docs`), merging with `backends.yaml`.
 - In-process result cache for repeated doc queries (guarded by an env flag).
 - Per-backend health dashboard.

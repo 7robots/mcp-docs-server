@@ -279,3 +279,288 @@ class TestShippedBackendsYaml:
             assert needle not in non_comment, (
                 f"suspicious literal {needle!r} in backends.yaml"
             )
+
+
+# ---------------------------------------------------------------------------
+# Marketplace discovery — fetching docs-tagged backends from an MCP marketplace
+# ---------------------------------------------------------------------------
+
+
+class TestMarketplaceDiscovery:
+    """Dynamic backend discovery via `MCP_MARKETPLACE_URL`."""
+
+    @staticmethod
+    def _mock_transport(payload, status_code=200):
+        """Build an httpx MockTransport that returns `payload` as JSON."""
+        import httpx
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(status_code, json=payload)
+
+        return httpx.MockTransport(handler)
+
+    def _patch_client(self, monkeypatch, transport):
+        """Replace httpx.Client so every call goes through `transport`."""
+        import httpx
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+    def test_no_env_var_returns_empty(self, clean_marketplace_env):
+        from mcp_docs.backends import fetch_marketplace_backends
+        assert fetch_marketplace_backends() == []
+
+    def test_empty_env_var_returns_empty(self, monkeypatch):
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "")
+        from mcp_docs.backends import fetch_marketplace_backends
+        assert fetch_marketplace_backends() == []
+
+    def test_fetch_translates_entries(self, monkeypatch):
+        payload = {
+            "servers": [
+                {
+                    "id": "fastmcp-docs",
+                    "name": "FastMCP Docs",
+                    "description": "FastMCP documentation",
+                    "url": "https://gofastmcp.com/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "none",
+                    "tags": ["docs", "fastmcp"],
+                },
+            ],
+            "total": 1,
+        }
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(monkeypatch, self._mock_transport(payload))
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        result = fetch_marketplace_backends()
+        assert len(result) == 1
+        b = result[0]
+        assert b["id"] == "fastmcp-docs"
+        assert b["url"] == "https://gofastmcp.com/mcp"
+        # streamable-http normalized to http
+        assert b["transport"] == "http"
+        assert b["auth"] == {"type": "none"}
+        assert b["enabled"] is True
+        assert "docs" in b["tags"]
+
+    def test_bearer_auth_maps_to_token_env(self, monkeypatch):
+        payload = {
+            "servers": [
+                {
+                    "id": "secret-docs",
+                    "name": "Secret Docs",
+                    "description": "",
+                    "url": "https://secret.example/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "bearer",
+                    "tags": ["docs"],
+                },
+            ],
+            "total": 1,
+        }
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(monkeypatch, self._mock_transport(payload))
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        result = fetch_marketplace_backends()
+        assert result[0]["auth"] == {
+            "type": "bearer",
+            "token_env": "SECRET_DOCS_BEARER_TOKEN",
+        }
+
+    def test_oauth_entry_skipped(self, monkeypatch, caplog):
+        payload = {
+            "servers": [
+                {
+                    "id": "ok-docs",
+                    "name": "OK",
+                    "description": "",
+                    "url": "https://ok.example/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "none",
+                    "tags": ["docs"],
+                },
+                {
+                    "id": "oauth-docs",
+                    "name": "OAuth Only",
+                    "description": "",
+                    "url": "https://oauth.example/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "oauth",
+                    "tags": ["docs"],
+                },
+            ],
+            "total": 2,
+        }
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(monkeypatch, self._mock_transport(payload))
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        with caplog.at_level("INFO", logger="mcp_docs.backends"):
+            result = fetch_marketplace_backends()
+        ids = [b["id"] for b in result]
+        assert ids == ["ok-docs"]
+        assert any("unsupported auth_type" in r.message for r in caplog.records)
+
+    def test_http_error_returns_empty(self, monkeypatch, caplog):
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(
+            monkeypatch, self._mock_transport({"error": "nope"}, status_code=500)
+        )
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        with caplog.at_level("WARNING", logger="mcp_docs.backends"):
+            assert fetch_marketplace_backends() == []
+        assert any("Marketplace discovery failed" in r.message for r in caplog.records)
+
+    def test_malformed_response_returns_empty(self, monkeypatch, caplog):
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(
+            monkeypatch, self._mock_transport({"wrong_key": []}, status_code=200)
+        )
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        with caplog.at_level("WARNING", logger="mcp_docs.backends"):
+            assert fetch_marketplace_backends() == []
+        assert any("missing 'servers' list" in r.message for r in caplog.records)
+
+    def test_cache_avoids_second_request(self, monkeypatch):
+        payload = {
+            "servers": [
+                {
+                    "id": "cached",
+                    "name": "Cached",
+                    "description": "",
+                    "url": "https://cached.example/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "none",
+                    "tags": ["docs"],
+                },
+            ],
+            "total": 1,
+        }
+        call_count = {"n": 0}
+
+        import httpx
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            call_count["n"] += 1
+            return httpx.Response(200, json=payload)
+
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(monkeypatch, httpx.MockTransport(handler))
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        fetch_marketplace_backends()
+        fetch_marketplace_backends()
+        fetch_marketplace_backends()
+        assert call_count["n"] == 1  # cached after first call
+
+    def test_tag_filter_is_sent(self, monkeypatch):
+        captured = {}
+
+        import httpx
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            return httpx.Response(200, json={"servers": [], "total": 0})
+
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        self._patch_client(monkeypatch, httpx.MockTransport(handler))
+
+        from mcp_docs.backends import fetch_marketplace_backends
+        fetch_marketplace_backends()
+        assert "tag=docs" in captured["url"]
+
+
+# ---------------------------------------------------------------------------
+# build_proxy_config — integration with marketplace discovery
+# ---------------------------------------------------------------------------
+
+
+class TestBuildProxyWithMarketplace:
+    def test_marketplace_backends_appended_to_file_backends(
+        self, monkeypatch, write_backends, clean_backend_env
+    ):
+        import httpx
+
+        payload = {
+            "servers": [
+                {
+                    "id": "marketplace-docs",
+                    "name": "Marketplace Docs",
+                    "description": "",
+                    "url": "https://mktpl.example/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "none",
+                    "tags": ["docs"],
+                },
+            ],
+            "total": 1,
+        }
+
+        def handler(request):
+            return httpx.Response(200, json=payload)
+
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        path = write_backends(_yaml_doc(backend_entry(id="local-one")))
+        cfg = build_proxy_config(path)
+        assert "local-one" in cfg["mcpServers"]
+        assert "marketplace-docs" in cfg["mcpServers"]
+
+    def test_file_wins_on_id_conflict(
+        self, monkeypatch, write_backends, clean_backend_env, caplog
+    ):
+        import httpx
+
+        payload = {
+            "servers": [
+                {
+                    "id": "dup",
+                    "name": "Marketplace Dup",
+                    "description": "",
+                    "url": "https://marketplace.example/mcp",
+                    "transport": "streamable-http",
+                    "auth_type": "none",
+                    "tags": ["docs"],
+                },
+            ],
+            "total": 1,
+        }
+
+        def handler(request):
+            return httpx.Response(200, json=payload)
+
+        monkeypatch.setenv("MCP_MARKETPLACE_URL", "https://m.example/api/discovery/servers")
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        path = write_backends(
+            _yaml_doc(backend_entry(id="dup", url="https://file.example/mcp"))
+        )
+        with caplog.at_level("INFO", logger="mcp_docs.backends"):
+            cfg = build_proxy_config(path)
+        assert cfg["mcpServers"]["dup"]["url"] == "https://file.example/mcp"
+        assert any(
+            "conflicts with backends.yaml" in r.message for r in caplog.records
+        )
