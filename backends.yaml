@@ -37,7 +37,7 @@ backends:
 
   - id: aws
     name: AWS Knowledge
-    url: https://knowledge-mcp.global.api.aws
+    url: https://knowledge-mcp.global.api.aws 
     transport: http
     # AWS knowledge MCP may require auth; if 401s show up, switch to:
     #   auth: { type: bearer, token_env: AWS_KNOWLEDGE_BEARER_TOKEN }
