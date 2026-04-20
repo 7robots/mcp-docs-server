@@ -25,6 +25,7 @@ from fastmcp.server.providers.skills import SkillProvider  # noqa: E402
 
 from mcp_docs.backends import build_proxy_config  # noqa: E402
 from mcp_docs.discovery import ListSources  # noqa: E402
+from mcp_docs.proxy import NoForwardMCPConfigTransport  # noqa: E402
 
 HERE = Path(__file__).parent
 
@@ -94,10 +95,15 @@ INSTRUCTIONS = (
 # fastmcp.cloud; create_proxy() returns a FastMCPProxy (a FastMCP subclass)
 # with a ProxyProvider already wired in, and our kwargs (auth, transforms,
 # instructions) are forwarded to the FastMCP constructor.
+#
+# We wrap the proxy config in NoForwardMCPConfigTransport so the caller's
+# Okta bearer token isn't relayed to public docs backends — otherwise
+# AWS/Cloudflare respond 401+WWW-Authenticate and Claude Desktop launches
+# a second OAuth flow per backend. See mcp_docs/proxy.py.
 BACKENDS_PATH = HERE / "backends.yaml"
 
 mcp = create_proxy(
-    build_proxy_config(BACKENDS_PATH),
+    NoForwardMCPConfigTransport(build_proxy_config(BACKENDS_PATH)),
     name="mcp-docs-server",
     instructions=INSTRUCTIONS,
     auth=_create_auth(),
