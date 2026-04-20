@@ -107,11 +107,16 @@ mcp = create_proxy(
     name="mcp-docs-server",
     instructions=INSTRUCTIONS,
     auth=_create_auth(),
-    transforms=[CodeMode(discovery_tools=[
-        Search(),
-        GetSchemas(),
-        ListSources(BACKENDS_PATH),
-    ])],
+    # DIAGNOSTIC: CodeMode temporarily disabled to isolate whether its
+    # meta-tools (list_sources / search / get_schema / execute) are what's
+    # triggering Claude Desktop's per-tool "Authentication required" prompt.
+    # Without CodeMode the raw prefixed backend tools (cloudflare_*, aws_*,
+    # …) are exposed directly. REVERT after test.
+    # transforms=[CodeMode(discovery_tools=[
+    #     Search(),
+    #     GetSchemas(),
+    #     ListSources(BACKENDS_PATH),
+    # ])],
 )
 
 # Bundle the usage skill. SkillProvider exposes SKILL.md at
