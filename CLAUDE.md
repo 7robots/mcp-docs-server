@@ -83,6 +83,43 @@ Claude Code sessions keep the old catalog. Tell the user to **disconnect
 and reconnect the MCP server in their client** before assuming a server-side
 bug. This bit us once already; verify reconnect before debugging wiring.
 
+### Claude Desktop re-prompts for auth on first tool call (FastMCPProxy-specific)
+
+On first tool use after OAuth-at-connect, Claude Desktop shows a
+"Claude wants to use `<tool>` from Documentation Server / Request {} /
+**Authentication required to use this tool**" dialog. User must click
+through once; subsequent tool calls in the same session are silent.
+This does *not* happen on `moon-d1-mcp-server`, which is a plain
+`FastMCP` with the same Okta wiring. The trigger is specific to
+`FastMCPProxy` / `ProxyProvider`.
+
+The prompt is client-side and pre-emptive — fastmcp.cloud logs show no
+incoming request at the moment it appears. Disconnect + quit + reopen +
+reconnect does *not* eliminate it.
+
+**Ruled out** (don't re-run these tests):
+
+- CodeMode transform — disabled on a diagnostic branch, prompt still fired
+  on direct `cloudflare_*` tool calls.
+- fastmcp version — symmetric test: bumped moon-d1 to 3.2.4 (still silent)
+  and downgraded docs-server to 3.1.1 (still prompted). Version is not the
+  cause in either direction.
+- Tool metadata — `uv run fastmcp inspect --format mcp` output is
+  functionally identical between the two servers (`annotations: null`,
+  `_meta: { fastmcp: { tags: [] } }` throughout).
+- Claude Desktop per-tool consent UX — "Always allow" does not suppress
+  the prompt, so it isn't standard permission consent.
+
+**Upstream:** filed at <!-- TODO: paste issue URL --> in the FastMCP
+repo. Track that thread before attempting more debugging here.
+
+**Related, separately fixed:** the per-backend OAuth dance (AWS
+Knowledge / Cloudflare Docs each demanding their own browser flow) was
+caused by `ProxyClient` setting `transport.forward_incoming_headers =
+True`. Fixed in `mcp_docs/proxy.py::NoForwardMCPConfigTransport`. That
+is a different symptom than this one, now cleanly resolved — don't
+conflate.
+
 ### `@mcp.tool` tools get hidden behind Code Mode
 
 `CodeMode.transform_tools` collapses the entire tool catalog into
