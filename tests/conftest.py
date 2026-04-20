@@ -65,25 +65,6 @@ def clean_backend_env(monkeypatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
-@pytest.fixture(autouse=True)
-def _reset_marketplace_cache() -> None:
-    """Clear the module-level marketplace-discovery cache between tests.
-
-    Prevents one test's mocked response from leaking into another test's
-    expectations. Runs autouse so every test gets a clean slate.
-    """
-    from mcp_docs.backends import _reset_marketplace_cache as _reset
-    _reset()
-    yield
-    _reset()
-
-
-@pytest.fixture
-def clean_marketplace_env(monkeypatch) -> None:
-    """Remove MCP_MARKETPLACE_URL so marketplace discovery is disabled by default."""
-    monkeypatch.delenv("MCP_MARKETPLACE_URL", raising=False)
-
-
 # ---------------------------------------------------------------------------
 # backends.yaml helpers
 # ---------------------------------------------------------------------------
@@ -111,7 +92,7 @@ def backend_entry(
     enabled: bool | None = True,
     tags: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Build a single backend entry as a dict — mirrors marketplace's `_server(...)` helper."""
+    """Build a single backend entry as a dict."""
     entry: dict[str, Any] = {
         "id": id,
         "name": name or id.title(),
